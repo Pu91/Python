@@ -1,61 +1,27 @@
 from flask import Flask, request, jsonify
+import os
 from datetime import datetime
 import pytz
-import re
-import wikipedia
-import random
-import difflib
+import google.generativeai as genai
 from flask_cors import CORS
 
-wikipedia.set_lang("bn")
 app = Flask(__name__)
-CORS(app) 
+CORS(app)
+
+# ==========================================
+# চাবি এখন রেন্ডারের গোপন লকার থেকে আসবে!
+# ==========================================
+GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=GOOGLE_API_KEY)
+
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 ai_memory = {}
 
 def ai_brain(user_message, chat_id):
     message = user_message.lower().strip()
     
-    # ==========================================
-    # স্মার্ট RAG (পড়ে নির্দিষ্ট অংশ বের করা)
-    # ==========================================
-    if "protista" in message or "protasta" in message:
-        try:
-            with open('protista.txt', 'r', encoding='utf-8') as file:
-                notes = file.read()
-            
-            # যদি শুধু 'বৈশিষ্ট্য' জানতে চায়
-            if "বৈশিষ্ট্য" in message or "boisisto" in message or "characteristics" in message:
-                start = notes.find("প্রধান বৈশিষ্ট্যসমূহ:")
-                end = notes.find("উদাহরণ:")
-                if start != -1 and end != -1:
-                    specific_answer = notes[start:end].strip().replace('\n', '<br>')
-                    return f"স্যার, আপনার নোটস অনুযায়ী কিংডম প্রোটিস্টার বৈশিষ্ট্যগুলো হলো:<br><br>{specific_answer}"
-            
-            # যদি শুধু 'উদাহরণ' জানতে চায়
-            elif "উদাহরণ" in message or "example" in message or "udahar" in message:
-                start = notes.find("উদাহরণ:")
-                if start != -1:
-                    specific_answer = notes[start:].strip().replace('\n', '<br>')
-                    return f"স্যার, আপনার নোটস অনুযায়ী এর কিছু উদাহরণ হলো:<br><br>{specific_answer}"
-            
-            # যদি শুধু 'কাকে বলে' বা সাধারণ কিছু জানতে চায়
-            else:
-                end = notes.find("প্রধান বৈশিষ্ট্যসমূহ:")
-                specific_answer = notes[:end].strip().replace('\n', '<br>') if end != -1 else notes.replace('\n', '<br>')
-                return f"স্যার, প্রোটিস্টা সম্পর্কে সাধারণ ধারণা হলো:<br><br>{specific_answer}"
-
-        except:
-            return "স্যার, 'protista.txt' ফাইলটি খুঁজে পাচ্ছি না।"
-            
-    # নাম মনে করা (Memory Recall)
-    if any(phrase in message for phrase in ["amar nam ki", "amar name ki", "what is my name", "amar nam ki?"]):
-        if chat_id in ai_memory and 'user_name' in ai_memory[chat_id]:
-            return f"আপনার নাম হলো {ai_memory[chat_id]['user_name']}! আমি কি আমার স্যারের নাম ভুলতে পারি?"
-        return "স্যার, আপনি তো এখনও আমাকে আপনার নাম বলেননি! আপনার নাম কী?"
-
-    # নাম সেভ করা (Memory Save)
-    elif any(phrase in message for phrase in ["amar nam", "amar name", "my name is"]):
+    if any(phrase in message for phrase in ["amar nam", "amar name", "my name is"]):
         name = ""
         for keyword in ["is ", "name ", "nam "]:
             if keyword in message:
@@ -66,38 +32,37 @@ def ai_brain(user_message, chat_id):
             ai_memory[chat_id]['user_name'] = name
             return f"ঠিক আছে স্যার, আমি মনে রাখব যে আপনার নাম {name}!"
 
-    # সাধারণ নলেজ
-    qa_dict = {
-        "hello": ["নমস্কার স্যার! ক্লাসে আপনাকে স্বাগত।", "হ্যালো! বলুন, আজ কী নিয়ে আলোচনা করব?"],
-        "hi": ["হ্যালো স্যার! আমি প্রস্তুত।", "হাই! বলুন কীভাবে সাহায্য করতে পারি?"],
-        "student": ["আবু সাইদ, শাকিল এবং শান্তনু—ওরা সবাই ক্লাসের বেঞ্চে বসে আপনার লেকচারের জন্য অপেক্ষা করছে!"]
-    }
-    
-    words_in_message = message.split()
-    for key, responses in qa_dict.items():
-        if key in message or difflib.get_close_matches(key, words_in_message, n=1, cutoff=0.7):
-            return random.choice(responses)
-            
-    # সময় বলা
-    if any(word in message for word in ["time", "somoy"]):
-        tz = pytz.timezone('Asia/Kolkata')
-        return f"স্যার, এখন ঘড়িতে সময় {datetime.now(tz).strftime('%I:%M %p')}।"
-        
-    # অঙ্ক করা
-    if re.match(r'^[0-9\s\+\-\*\/\(\)\.]+$', message):
-        try: return f"খুব সহজ! এর উত্তর হবে: {eval(message)}"
-        except: pass
-            
-    # উইকিপিডিয়া সার্চ
+    if any(phrase in message for phrase in ["amar nam ki", "amar name ki"]):
+        if chat_id in ai_memory and 'user_name' in ai_memory[chat_id]:
+            return f"আপনার নাম হলো {ai_memory[chat_id]['user_name']}! আমি কি আমার স্যারের নাম ভুলতে পারি?"
+        return "স্যার, আপনি তো এখনও আমাকে আপনার নাম বলেননি!"
+
+    notes_content = ""
     try:
-        return f"আমি উইকিপিডিয়া থেকে আপনার জন্য এই তথ্যটি পেলাম:<br><br>{wikipedia.summary(message, sentences=2)}"
+        with open('protista.txt', 'r', encoding='utf-8') as file:
+            notes_content = file.read()
     except:
         pass
-            
-    return random.choice([
-        f"আপনি বলেছেন: '{user_message}'। স্যার, এই বিষয়টি আমার জানা নেই। আমাকে কি একটু বুঝিয়ে বলবেন?",
-        f"দুঃখিত স্যার, '{user_message}' সম্পর্কে আমার কাছে কোনো তথ্য নেই।"
-    ])
+
+    prompt = f"""
+    তুমি একজন অত্যন্ত স্মার্ট এবং বন্ধুসুলভ AI শিক্ষক। তুমি ক্লাসের ছাত্রদের সাহায্য করার জন্য তৈরি হয়েছো।
+    সব প্রশ্নের উত্তর তুমি বাংলায়, খুব সহজে এবং গল্পের মতো করে বুঝিয়ে দেবে।
+
+    নিচে 'কিংডম প্রোটিস্টা' সম্পর্কে একটি নোটস দেওয়া হলো:
+    {notes_content}
+
+    ছাত্রের বর্তমান প্রশ্ন: "{user_message}"
+
+    নির্দেশনা:
+    ১. যদি ছাত্রের প্রশ্ন প্রোটিস্টা সম্পর্কে হয়, তবে অবশ্যই ওপরের নোটস থেকে তথ্য নিয়ে খুব সুন্দর করে গুছিয়ে উত্তর দেবে। হুবহু কপি না করে মানুষের মতো বুঝিয়ে বলবে।
+    ২. যদি প্রশ্নটি অঙ্কের, বিজ্ঞানের বা অন্য কোনো শিক্ষামূলক বিষয়ের হয়, তবে তুমি তোমার নিজের বিশাল জ্ঞান ব্যবহার করে উত্তর দেবে।
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        return response.text.replace('\n', '<br>')
+    except Exception as e:
+        return "দুঃখিত স্যার, এই মুহূর্তে আমার ব্রেনের সার্ভারে একটু সমস্যা হচ্ছে। দয়া করে একটু পর আবার চেষ্টা করুন।"
 
 @app.route('/api', methods=['POST'])
 def chat_api():
@@ -108,7 +73,7 @@ def chat_api():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Smart AI Tutor Server is Running Perfectly!"
+    return "Smart AI Tutor Server is Running Perfectly with Gemini Brain!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=True)
