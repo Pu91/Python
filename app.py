@@ -5,6 +5,7 @@ import re
 import wikipedia
 import random
 import difflib
+import os
 from flask_cors import CORS
 
 wikipedia.set_lang("bn")
@@ -17,6 +18,20 @@ ai_memory = {}
 def ai_brain(user_message, chat_id):
     message = user_message.lower().strip()
     
+    # ==========================================
+    # নতুন ফিচার: নিজের বই বা নোটস থেকে পড়া (RAG)
+    # ==========================================
+    if "protista" in message or "protasta" in message:
+        try:
+            # গিটহাবে আপলোড করা protista.txt ফাইলটি পড়ার চেষ্টা করবে
+            with open('protista.txt', 'r', encoding='utf-8') as file:
+                notes = file.read()
+            # ওয়েবসাইটে লাইন ব্রেক ঠিক রাখার জন্য \n কে <br> বানানো হলো
+            notes = notes.replace('\n', '<br>')
+            return f"স্যার, আমি আপনার দেওয়া নোটস থেকে পড়ে বলছি:<br><br>{notes}"
+        except:
+            return "স্যার, 'protista.txt' ফাইলটি খুঁজে পাচ্ছি না। দয়া করে গিটহাবে ফাইলটি .txt ফরম্যাটে আপলোড করেছেন কি না চেক করুন।"
+            
     # ১. আগে চেক করবে নাম জানতে চাইছে কি না (Memory Recall)
     if any(phrase in message for phrase in ["amar nam ki", "amar name ki", "what is my name", "amar nam ki?"]):
         if chat_id in ai_memory and 'user_name' in ai_memory[chat_id]:
