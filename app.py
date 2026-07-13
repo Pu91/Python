@@ -11,35 +11,36 @@ wikipedia.set_lang("bn")
 app = Flask(__name__)
 CORS(app) 
 
-# ==========================================
-# AI-এর মেমোরি বা স্মৃতিশক্তি (ম্যাজিক এখানেই!)
-# ==========================================
+# AI-এর মেমোরি
 ai_memory = {}
 
 def ai_brain(user_message, chat_id):
     message = user_message.lower().strip()
     
-    # ১. মেমোরি সেভ করা (যেমন: আমার নাম পুস্পেন্দু)
-    if "amar nam" in message or "my name is" in message:
-        # নামটা বের করার লজিক
-        name_parts = message.split("nam") if "nam" in message else message.split("is")
-        if len(name_parts) > 1:
-            name = name_parts[-1].strip()
-            
-            # মেমোরিতে চ্যাট আইডি অনুযায়ী নাম সেভ করা
-            if chat_id not in ai_memory:
-                ai_memory[chat_id] = {}
-            ai_memory[chat_id]['user_name'] = name
-            
-            return f"ঠিক আছে স্যার, আমি মনে রাখব যে আপনার নাম {name}!"
-
-    # ২. মেমোরি থেকে মনে করা (যেমন: আমার নাম কী?)
-    if "amar nam ki" in message or "what is my name" in message or "amar name ki" in message:
+    # ১. আগে চেক করবে নাম জানতে চাইছে কি না (Memory Recall)
+    if any(phrase in message for phrase in ["amar nam ki", "amar name ki", "what is my name", "amar nam ki?"]):
         if chat_id in ai_memory and 'user_name' in ai_memory[chat_id]:
             saved_name = ai_memory[chat_id]['user_name']
             return f"আপনার নাম হলো {saved_name}! আমি কি আমার স্যারের নাম ভুলতে পারি?"
         else:
             return "স্যার, আপনি তো এখনও আমাকে আপনার নাম বলেননি! আপনার নাম কী?"
+
+    # ২. এরপর চেক করবে নাম বলছে কি না (Memory Save)
+    elif "amar nam" in message or "amar name" in message or "my name is" in message:
+        if "is " in message:
+            name = message.split("is ")[-1].strip()
+        elif "name " in message:
+            name = message.split("name ")[-1].strip()
+        elif "nam " in message:
+            name = message.split("nam ")[-1].strip()
+        else:
+            name = ""
+            
+        if name:
+            if chat_id not in ai_memory:
+                ai_memory[chat_id] = {}
+            ai_memory[chat_id]['user_name'] = name
+            return f"ঠিক আছে স্যার, আমি মনে রাখব যে আপনার নাম {name}!"
 
     # ৩. সাধারণ নলেজ বেস
     qa_dict = {
@@ -89,13 +90,8 @@ def ai_brain(user_message, chat_id):
 @app.route('/api', methods=['POST'])
 def chat_api():
     user_message = request.form.get('message', '')
-    
-    # PHP থেকে আসা Chat ID ধরা হচ্ছে, যাতে সে আলাদা আলাদা চ্যাটের কথা আলাদাভাবে মনে রাখে
     chat_id = request.form.get('chat_id', 'default_chat') 
-    
-    # ব্রেনকে মেসেজ এবং চ্যাট আইডি দুটোই পাঠানো হলো
     ai_response = ai_brain(user_message, chat_id)
-    
     return jsonify({
         'status': 'success',
         'reply': ai_response
