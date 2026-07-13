@@ -1,6 +1,5 @@
 flask
 gunicorn
-wikipedia
 pytz
 flask-cors
-PyPDF2
+google-generativeai
